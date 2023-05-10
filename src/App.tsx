@@ -1,74 +1,110 @@
 import { useEffect, useMemo, useState } from "react";
-import { open } from "@tauri-apps/api/dialog";
-import { documentDir,basename,join } from "@tauri-apps/api/path"
+import { open,save } from "@tauri-apps/api/dialog";
+import { documentDir,basename,join, homeDir } from "@tauri-apps/api/path"
 import { writeTextFile,BaseDirectory,readTextFile,readDir,createDir, FileEntry,exists } from "@tauri-apps/api/fs"
 import "./App.css";
 import { Editor } from "@monaco-editor/react";
-import { FileData } from "./model/FileData";
+import type { MapFile,FileData } from "./model/FilesModel";
 
 function App() {
-  const [curentPath,setCurrentPath] = useState("")
-  const [currentDir,setCurrentDir] = useState<FileEntry[]>([])
-  const files = new Map<string,FileData>()
-  const [currentFile,setCurrentFile] = useState("")
-  let focusFile = useMemo(()=>files.get(currentFile),[currentFile])
+  const [cacheFiles,setCacheFiles] = useState<MapFile>({"nuevo archivo":{data:"",languaje:"txt",name:"nuevo archivo"}}) 
+  const [baseDir,setBaseDir] = useState("")
+  const [filesOfDir,setFilesOfDir] = useState<FileEntry[]>([])
+  const [currentFile,setcurrentFile] = useState("nuevo archivo")
+  const fileFocused = useMemo(()=>cacheFiles[currentFile],[currentFile,cacheFiles])
+
   useEffect(()=>{
-    async function init(){
-      if(!(await exists("compiladores",{dir:BaseDirectory.Document}))){
-        await createDir("compiladores",{dir:BaseDirectory.Document})
-      }
-      const dir = await readDir("compiladores",{dir:BaseDirectory.Document})
-      setCurrentDir(dir)
-      setCurrentPath(await join(await documentDir(),"compiladores"))
-    }
-    init().catch(err=> console.log(err))
-  },[])
+    refreshDir()
+  },[baseDir])
 
-  const openDir = async ()=>{
-    const path = await open({multiple:false,recursive:true,defaultPath:await documentDir()}) as string
-    const files = await readDir(path)
-    setCurrentPath(path)
-    setCurrentDir(files)
+  async function saveAsFile(){
+     const path = await save({defaultPath:baseDir})
+     if(path == null) return
+     await writeTextFile(path,fileFocused.data)
   }
 
-  const openFile = async ()=> {
-    const path = await open({multiple:false,recursive:true,defaultPath:await documentDir()}) as string
-    const data = await readTextFile(path)
+  async function saveFile(){
+    if(!fileFocused) return console.log("fileFocused undefine en saveFile")
+    const path = !!fileFocused.path ? fileFocused.path : await save({defaultPath:baseDir})
+
+    if(path == null) return
+
+    await writeTextFile(path,fileFocused.data)
+    refreshDir()
+  }
+
+  async function openFile(){
+    const path = await open({directory:false,recursive:true,multiple:false}) as string
+    if(path == null) return
     const name = await basename(path)
-    if(path != null) files.set(path,{name,data,languaje:"txt"})
+    const data = await readTextFile(path)
+
+    // cacheFiles[path] = {name,data,languaje:"txt",path}
+    setCacheFiles(cf=>({...cf,[path]:{name,data,languaje:"txt",path}}))
+    setcurrentFile(path)
   }
 
-  const createFile = async ()=> {
-    files.set(await join(curentPath,currentFile),{name:currentFile,data:"",languaje:"txt"})
+  async function openDir(){
+    const dir = await open({directory:true,multiple:false,recursive:true}) as string | null
+
+    if(dir == null) return
+
+    setBaseDir(dir)
+    
+    // const files = await readDir(dir)
+    // setFilesOfDir(files)
   }
-  const saveFile = async ()=> {
-    await writeTextFile(await join(curentPath,currentFile),focusFile?.data || "no hay data")
+  async function refreshDir(){
+    const files = await readDir(baseDir)
+    setFilesOfDir(files)
   }
 
-  const saveAsFile = async ()=> {
-    const path = await open({multiple:false,defaultPath:curentPath,recursive:true,title:"nuevo archivo"}) as string
-    await writeTextFile(path,focusFile?.data || "no hay data")
+  async function changeFocusFile(path:string){
+    console.log({path})
+    if(cacheFiles[path] == null){
+      console.log("if")
+      const data = await readTextFile(path)
+      const name = await basename(path)
+      // cacheFiles[path] = {name,data,languaje:"txt",path}
+      setCacheFiles(cf=> ({...cf,[path]:{name,data,languaje:"txt",path}}))
+    }
+    setcurrentFile(path)
   }
 
-  const changeFocusFile = (path: string)=>{
-    setCurrentFile(path)
+  async function createFile(){
+    // cacheFiles[await join(baseDir,"nuevo archivo.txt")] = {data:"",languaje:"txt",name:"nuevo archivo"}
+    const name = await join(baseDir,"nuevo archivo.txt")
+    setCacheFiles(cf=>({...cf,[name]:{data:"",languaje:"txt",name,path:name}}))
+  }
+
+  function handleData(value?: string){
+    fileFocused.data = value || ""
+  }
+  async function onEditorMount(){
+    setBaseDir(await homeDir())
   }
 
   return (
     <div className="app">
-      <Editor width="50%" height="95vh" theme="vs-light"path={focusFile?.name} defaultLanguage={focusFile?.languaje} defaultValue={focusFile?.data}/>
-      <div className="flex justify-center">
-        <button onClick={createFile}>crear</button>
-        <button onClick={saveFile}>save</button>
-        <button onClick={saveAsFile}>save as</button>
-      </div>
-      <div className="flex justify-center p-1">
-        {
-          currentDir.map(d=><div onClick={()=> changeFocusFile(d.path)}>{d.name}</div>)
-        }
+      <div className="flex-container">
+        <div className="flex-container-row">
+          <div className="flex-container">
+            {
+              (filesOfDir.map((f,i)=> <div key={i} onClick={async ()=>await changeFocusFile(f.path)}>{f.name}</div>))
+            }
+          </div>
+          <Editor defaultLanguage="plaintext" onMount={onEditorMount} path={fileFocused?.name} theme="vs-ligth" width="50%" height="90vh" defaultValue={fileFocused.data} onChange={handleData}/>
+        </div>
+        <div className="flex-container">
+          <button onClick={saveFile}>salvar</button>
+          <button onClick={saveAsFile}>salvar como</button>
+          <button onClick={openDir}>abrir directorio</button>
+          <button onClick={()=> console.log({cacheFiles,baseDir,fileFocused,currentFile})}>log</button>
+        </div>
       </div>
     </div>
   )
-}
 
+
+}
 export default App;

@@ -1,11 +1,11 @@
-.logo.vite:hover {
-  filter: drop-shadow(0 0 2em #747bff);
+.flex-container{
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafb);
-}
-
-.app {
-  padding: 5px;
+.flex-container-row{
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
 }

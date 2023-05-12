@@ -18,9 +18,11 @@ function App() {
   },[baseDir])
 
   async function saveAsFile(){
-     const path = await save({defaultPath:baseDir})
-     if(path == null) return
-     await writeTextFile(path,fileFocused.data)
+    const path = await save({defaultPath:baseDir})
+    if(path == null) return
+    await writeTextFile(path,fileFocused.data)
+    replaceNewFile(path,fileFocused.data)
+
   }
 
   async function saveFile(){
@@ -29,8 +31,25 @@ function App() {
 
     if(path == null) return
 
+
     await writeTextFile(path,fileFocused.data)
+
     refreshDir()
+
+    replaceNewFile(path,fileFocused.data)
+    
+  }
+
+  async function replaceNewFile(path: string,data: string){
+    if(fileFocused.name !== "nuevo archivo" || !cacheFiles["nuevo archivo"]) return
+
+    const name = await basename(path)
+
+    
+    setCacheFiles(cf=>({...cf,[path]:{name,data,languaje:"txt",path}}))
+    setcurrentFile(path)
+    
+    delete cacheFiles["nuevo archivo"]
   }
 
   async function openFile(){
@@ -61,7 +80,7 @@ function App() {
 
   async function changeFocusFile(path:string){
     console.log({path})
-    if(cacheFiles[path] == null){
+    if(!cacheFiles[path]){
       console.log("if")
       const data = await readTextFile(path)
       const name = await basename(path)
@@ -84,16 +103,34 @@ function App() {
     setBaseDir(await homeDir())
   }
 
+  function getNamesOfCacheFiles(){
+    const cachedFiles = []
+
+    for(const cf in cacheFiles){
+      cachedFiles.push({path:cf,name:cacheFiles[cf].name})
+    }
+    return cachedFiles
+  }
+
   return (
     <div className="app">
       <div className="flex-container">
         <div className="flex-container-row">
-          <div className="flex-container">
+          <div className="flex-container documents">
             {
               (filesOfDir.map((f,i)=> <div key={i} onClick={async ()=>await changeFocusFile(f.path)}>{f.name}</div>))
             }
           </div>
-          <Editor defaultLanguage="plaintext" onMount={onEditorMount} path={fileFocused?.name} theme="vs-ligth" width="50%" height="90vh" defaultValue={fileFocused.data} onChange={handleData}/>
+          <div className="flex-container full-width">
+            <div className="flex-container-row gap">
+            {
+              getNamesOfCacheFiles().map((cf,i)=>(
+                <div key={i} onClick={async ()=>await changeFocusFile(cf.path)}> {cf.name} </div>
+              ))
+            }
+            </div>
+            <Editor defaultLanguage="plaintext" onMount={onEditorMount} path={fileFocused.name} theme="vs-ligth" width="100%" height="90vh" defaultValue={fileFocused.data} onChange={handleData}/>
+          </div>
         </div>
         <div className="flex-container">
           <button onClick={saveFile}>salvar</button>

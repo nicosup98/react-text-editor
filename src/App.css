@@ -12,6 +12,9 @@
 
 .documents{
   width: 30%;
+  overflow-y: scroll;
+  height: 90vh;
+  gap: 5px;
 }
 
 .gap{

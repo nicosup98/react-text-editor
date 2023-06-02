@@ -4,24 +4,59 @@ import { documentDir,basename,join, homeDir } from "@tauri-apps/api/path"
 import { writeTextFile,BaseDirectory,readTextFile,readDir,createDir, FileEntry,exists } from "@tauri-apps/api/fs"
 import "./App.css";
 import { Editor } from "@monaco-editor/react";
-import type { MapFile,FileData } from "./model/FilesModel";
+import type { MapFile,ShorcutCommands } from "./model/FilesModel";
+import { register, registerAll } from "@tauri-apps/api/globalShortcut"
+import {nanoid} from "nanoid"
 
 function App() {
-  const [cacheFiles,setCacheFiles] = useState<MapFile>({"nuevo archivo":{data:"",languaje:"txt",name:"nuevo archivo"}}) 
+  const [cacheFiles,setCacheFiles] = useState<MapFile>({"archivo-1":{data:"",languaje:"txt",name:"archivo-1",isSaved:true}}) 
   const [baseDir,setBaseDir] = useState("")
   const [filesOfDir,setFilesOfDir] = useState<FileEntry[]>([])
-  const [currentFile,setcurrentFile] = useState("nuevo archivo")
+  const [currentFile,setcurrentFile] = useState("archivo-1")
   const fileFocused = useMemo(()=>cacheFiles[currentFile],[currentFile,cacheFiles])
 
   useEffect(()=>{
     refreshDir()
   },[baseDir])
 
+  async function initCommands(){
+    const shortCuts: ShorcutCommands = {
+      "CommandOrControl+n" : generatesNewFile,
+      "CommandOrControl+o" : openFile,
+      "CommandOrControl+Shift+O": openDir
+    } 
+    registerAll(["CommandOrControl+n","CommandOrControl+o","CommandOrControl+Shift+O"],(commands =>{
+      shortCuts[commands]()
+    }))
+    // await register("CommandOrControl+s",()=>{saveFile()})
+    // await Promise.all(
+    //   [
+    //     register("CommandOrControl+n",generatesNewFile),
+    //     register("CommandOrControl+o",openFile),
+    //     register("CommandOrControl+Shift+O",openDir)
+    //   ]
+    // )
+  }
+
+  function generatesNewFile(): void{
+    const fileName = `archivo-${nanoid(3)}`
+    console.log({fileName})
+    if(!!cacheFiles[fileName]){
+      console.log("itero")
+      return generatesNewFile()
+    }
+    setCacheFiles(f=>({...f,[fileName]:{data:"",languaje:"txt",name:fileName,isSaved:true}}))
+    setcurrentFile(fileName)
+    return
+    
+  }
+
   async function saveAsFile(){
     const path = await save({defaultPath:baseDir})
     if(path == null) return
     await writeTextFile(path,fileFocused.data)
     replaceNewFile(path,fileFocused.data)
+    refreshDir()
 
   }
 
@@ -34,22 +69,23 @@ function App() {
 
     await writeTextFile(path,fileFocused.data)
 
-    refreshDir()
+    if (!fileFocused.isSaved) fileFocused.isSaved = true
 
-    replaceNewFile(path,fileFocused.data)
+    await replaceNewFile(path,fileFocused.data)
+    await refreshDir()
     
   }
 
   async function replaceNewFile(path: string,data: string){
-    if(fileFocused.name !== "nuevo archivo" || !cacheFiles["nuevo archivo"]) return
-
+    if(!!fileFocused.path) return
+    const oldFile = fileFocused.name
     const name = await basename(path)
 
     
-    setCacheFiles(cf=>({...cf,[path]:{name,data,languaje:"txt",path}}))
+    setCacheFiles(cf=>({...cf,[path]:{name,data,languaje:"txt",path,isSaved:true}}))
     setcurrentFile(path)
     
-    delete cacheFiles["nuevo archivo"]
+    delete cacheFiles[oldFile]
   }
 
   async function openFile(){
@@ -59,7 +95,7 @@ function App() {
     const data = await readTextFile(path)
 
     // cacheFiles[path] = {name,data,languaje:"txt",path}
-    setCacheFiles(cf=>({...cf,[path]:{name,data,languaje:"txt",path}}))
+    setCacheFiles(cf=>({...cf,[path]:{name,data,languaje:"txt",path,isSaved:true}}))
     setcurrentFile(path)
   }
 
@@ -74,6 +110,7 @@ function App() {
     // setFilesOfDir(files)
   }
   async function refreshDir(){
+    console.log({baseDir})
     const files = await readDir(baseDir)
     setFilesOfDir(files)
   }
@@ -85,22 +122,24 @@ function App() {
       const data = await readTextFile(path)
       const name = await basename(path)
       // cacheFiles[path] = {name,data,languaje:"txt",path}
-      setCacheFiles(cf=> ({...cf,[path]:{name,data,languaje:"txt",path}}))
+      setCacheFiles(cf=> ({...cf,[path]:{name,data,languaje:"txt",path,isSaved:true}}))
     }
     setcurrentFile(path)
   }
 
-  async function createFile(){
-    // cacheFiles[await join(baseDir,"nuevo archivo.txt")] = {data:"",languaje:"txt",name:"nuevo archivo"}
-    const name = await join(baseDir,"nuevo archivo.txt")
-    setCacheFiles(cf=>({...cf,[name]:{data:"",languaje:"txt",name,path:name}}))
-  }
+  // async function createFile(){
+  
+  //   const name = await join(baseDir,"archivo.txt")
+  //   setCacheFiles(cf=>({...cf,[name]:{data:"",languaje:"txt",name,path:name}}))
+  // }
 
   function handleData(value?: string){
     fileFocused.data = value || ""
+    fileFocused.isSaved = false
   }
   async function onEditorMount(){
     setBaseDir(await homeDir())
+    initCommands()
   }
 
   function getNamesOfCacheFiles(){
@@ -118,7 +157,7 @@ function App() {
         <div className="flex-container-row">
           <div className="flex-container documents">
             {
-              (filesOfDir.map((f,i)=> <div key={i} onClick={async ()=>await changeFocusFile(f.path)}>{f.name}</div>))
+              (filesOfDir.map((f,i)=> <div key={i} onClick={async ()=>await changeFocusFile(f.path)}>{f.name}{fileFocused.isSaved? "":" *"}</div>))
             }
           </div>
           <div className="flex-container full-width">

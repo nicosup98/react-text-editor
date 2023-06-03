@@ -1,16 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 import { open,save } from "@tauri-apps/api/dialog";
-import { documentDir,basename,join, homeDir } from "@tauri-apps/api/path"
-import { writeTextFile,BaseDirectory,readTextFile,readDir,createDir, FileEntry,exists } from "@tauri-apps/api/fs"
+import {basename, homeDir } from "@tauri-apps/api/path"
+import { writeTextFile,readTextFile,readDir,createDir, FileEntry,exists } from "@tauri-apps/api/fs"
 import "./App.css";
 import { Editor } from "@monaco-editor/react";
-import type { MapFile,ShorcutCommands } from "./model/FilesModel";
-import { register, registerAll } from "@tauri-apps/api/globalShortcut"
+import type { MapFile, ShorcutCommands } from "./model/FilesModel";
+import { registerAll } from "@tauri-apps/api/globalShortcut"
 import {nanoid} from "nanoid"
+import { useRecoilState } from "recoil"
+import { cachefiles,currentDir } from "./atoms"
 
 function App() {
-  const [cacheFiles,setCacheFiles] = useState<MapFile>({"archivo-1":{data:"",languaje:"txt",name:"archivo-1",isSaved:true}}) 
-  const [baseDir,setBaseDir] = useState("")
+  const [cacheFiles,setCacheFiles] = useRecoilState(cachefiles)
+  const [baseDir,setBaseDir] = useRecoilState(currentDir)
   const [filesOfDir,setFilesOfDir] = useState<FileEntry[]>([])
   const [currentFile,setcurrentFile] = useState("archivo-1")
   const fileFocused = useMemo(()=>cacheFiles[currentFile],[currentFile,cacheFiles])
@@ -23,9 +25,10 @@ function App() {
     const shortCuts: ShorcutCommands = {
       "CommandOrControl+n" : generatesNewFile,
       "CommandOrControl+o" : openFile,
-      "CommandOrControl+Shift+O": openDir
+      "CommandOrControl+Shift+O": openDir,
+      "CommandOrControl+s": saveFile
     } 
-    registerAll(["CommandOrControl+n","CommandOrControl+o","CommandOrControl+Shift+O"],(commands =>{
+    registerAll(["CommandOrControl+n","CommandOrControl+o","CommandOrControl+Shift+O","CommandOrControl+s"],(commands =>{
       shortCuts[commands]()
     }))
     // await register("CommandOrControl+s",()=>{saveFile()})
@@ -72,7 +75,7 @@ function App() {
     if (!fileFocused.isSaved) fileFocused.isSaved = true
 
     await replaceNewFile(path,fileFocused.data)
-    await refreshDir()
+    refreshDir()
     
   }
 
@@ -82,10 +85,17 @@ function App() {
     const name = await basename(path)
 
     
-    setCacheFiles(cf=>({...cf,[path]:{name,data,languaje:"txt",path,isSaved:true}}))
+    setCacheFiles(cf=>{
+      let newCache: MapFile = {}
+      for(const f in cf){
+        if(f === oldFile)continue
+        newCache[f] = cf[f]
+      }
+      newCache[path] = {name,data,languaje:"txt",path,isSaved:true}
+      return newCache
+    })
     setcurrentFile(path)
     
-    delete cacheFiles[oldFile]
   }
 
   async function openFile(){
@@ -134,8 +144,13 @@ function App() {
   // }
 
   function handleData(value?: string){
-    fileFocused.data = value || ""
-    fileFocused.isSaved = false
+    // fileFocused.data = value || ""
+    // fileFocused.isSaved = false
+    let ff = {...fileFocused}
+    ff.data = value || ""
+
+
+    setCacheFiles(cf=>({...cf,[currentFile]:ff}))
   }
   async function onEditorMount(){
     setBaseDir(await homeDir())

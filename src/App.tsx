@@ -5,7 +5,7 @@ import { writeTextFile,readTextFile,readDir,createDir, FileEntry,exists } from "
 import "./App.css";
 import { Editor } from "@monaco-editor/react";
 import type { MapFile, ShorcutCommands } from "./model/FilesModel";
-import { registerAll } from "@tauri-apps/api/globalShortcut"
+import { registerAll, unregisterAll } from "@tauri-apps/api/globalShortcut"
 import {nanoid} from "nanoid"
 import { useRecoilState } from "recoil"
 import { cachefiles,currentDir } from "./atoms"
@@ -19,9 +19,15 @@ function App() {
 
   useEffect(()=>{
     refreshDir()
+    initCommands()
   },[baseDir])
 
+  useEffect(()=>{
+    initCommands()
+  },[fileFocused])
+
   async function initCommands(){
+    await unregisterAll()
     const shortCuts: ShorcutCommands = {
       "CommandOrControl+n" : generatesNewFile,
       "CommandOrControl+o" : openFile,
@@ -31,14 +37,6 @@ function App() {
     registerAll(["CommandOrControl+n","CommandOrControl+o","CommandOrControl+Shift+O","CommandOrControl+s"],(commands =>{
       shortCuts[commands]()
     }))
-    // await register("CommandOrControl+s",()=>{saveFile()})
-    // await Promise.all(
-    //   [
-    //     register("CommandOrControl+n",generatesNewFile),
-    //     register("CommandOrControl+o",openFile),
-    //     register("CommandOrControl+Shift+O",openDir)
-    //   ]
-    // )
   }
 
   function generatesNewFile(): void{

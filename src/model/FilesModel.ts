@@ -15,3 +15,7 @@ export interface MapFile {
 export interface ShorcutCommands {
     [key: string] :  ()=> Promise<void> | void
 }
+
+export interface CompilerResponse {
+    [key : string] : number
+}

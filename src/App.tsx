@@ -1,9 +1,9 @@
-import VideoPlayer from "./components/videoPlayer";
+import Editor from "./components/Editor";
 function App() {
 
   return (
   <>
-    <VideoPlayer />
+    <Editor />
   </>
   )
 

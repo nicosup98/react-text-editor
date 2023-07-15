@@ -3,7 +3,7 @@ import { MapFile } from "./model/FilesModel"
 
 export const cachefiles = atom<MapFile>({
     key:"cachefiles",
-    default: {"archivo-1":{data:"",languaje:"txt",name:"archivo-1",isSaved:true}}
+    default: {}
 })
 
 export const currentDir = atom({

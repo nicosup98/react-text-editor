@@ -7,24 +7,30 @@ import {
   readDir,
   FileEntry,
 } from "@tauri-apps/api/fs";
-import { Editor } from "@monaco-editor/react";
-import type { MapFile, ShorcutCommands } from "../model/FilesModel";
+import { Editor as MonacoEditor } from "@monaco-editor/react";
+import type { FileData, MapFile, ShorcutCommands } from "../model/FilesModel";
 import { registerAll, unregisterAll } from "@tauri-apps/api/globalShortcut";
 import { nanoid } from "nanoid";
 import { useRecoilState } from "recoil";
 import { cachefiles, currentDir } from "../atoms";
 import Compiler from "./Compiler";
 
-function VideoPlayer() {
+function Editor() {
   const [cacheFiles, setCacheFiles] = useRecoilState(cachefiles);
   const [baseDir, setBaseDir] = useRecoilState(currentDir);
   const [filesOfDir, setFilesOfDir] = useState<FileEntry[]>([]);
-  const [currentFile, setcurrentFile] = useState("archivo-1");
-  const [shouldCompile,setShouldCompile] = useState(false)
+  const [currentFile, setcurrentFile] = useState("");
+  const [shouldCompile, setShouldCompile] = useState(false);
+
   const fileFocused = useMemo(
     () => cacheFiles[currentFile],
     [currentFile, cacheFiles]
   );
+
+  useEffect(()=>{
+    homeDir().then(dir=>setBaseDir(dir))
+    initCommands();
+  },[])
 
   useEffect(() => {
     refreshDir();
@@ -33,7 +39,7 @@ function VideoPlayer() {
 
   useEffect(() => {
     initCommands();
-    setShouldCompile(false)
+    setShouldCompile(false);
   }, [fileFocused]);
 
   async function initCommands() {
@@ -43,6 +49,7 @@ function VideoPlayer() {
       "CommandOrControl+o": openFile,
       "CommandOrControl+Shift+O": openDir,
       "CommandOrControl+s": saveFile,
+      "CommandOrControl+w": closeFile,
     };
     registerAll(
       [
@@ -50,6 +57,7 @@ function VideoPlayer() {
         "CommandOrControl+o",
         "CommandOrControl+Shift+O",
         "CommandOrControl+s",
+        "CommandOrControl+w",
       ],
       (commands) => {
         shortCuts[commands]();
@@ -66,7 +74,7 @@ function VideoPlayer() {
     }
     setCacheFiles((f) => ({
       ...f,
-      [fileName]: { data: "", languaje: "txt", name: fileName, isSaved: true },
+      [fileName]: { data: "", languaje: "txt", name: fileName },
     }));
     setcurrentFile(fileName);
     return;
@@ -90,8 +98,6 @@ function VideoPlayer() {
 
     await writeTextFile(path, fileFocused.data);
 
-    if (!fileFocused.isSaved) fileFocused.isSaved = true;
-
     await replaceNewFile(path, fileFocused.data);
     refreshDir();
   }
@@ -107,7 +113,7 @@ function VideoPlayer() {
         if (f === oldFile) continue;
         newCache[f] = cf[f];
       }
-      newCache[path] = { name, data, languaje: "txt", path, isSaved: true };
+      newCache[path] = { name, data, languaje: "txt", path };
       return newCache;
     });
     setcurrentFile(path);
@@ -126,7 +132,7 @@ function VideoPlayer() {
     // cacheFiles[path] = {name,data,languaje:"txt",path}
     setCacheFiles((cf) => ({
       ...cf,
-      [path]: { name, data, languaje: "txt", path, isSaved: true },
+      [path]: { name, data, languaje: "txt", path },
     }));
     setcurrentFile(path);
   }
@@ -160,10 +166,26 @@ function VideoPlayer() {
       // cacheFiles[path] = {name,data,languaje:"txt",path}
       setCacheFiles((cf) => ({
         ...cf,
-        [path]: { name, data, languaje: "txt", path, isSaved: true },
+        [path]: { name, data, languaje: "txt", path },
       }));
     }
     setcurrentFile(path);
+  }
+
+  function closeFile() {
+    const oldFile = currentFile.slice();
+    const keys = Object.keys(cacheFiles).filter((k) => k !== oldFile);
+    const randomNum = Math.floor(Math.random() * keys.length);
+    console.log(keys[randomNum]);
+    setcurrentFile(keys[randomNum]);
+    setCacheFiles((cf) => {
+      const newCache: MapFile = {};
+      for (const e in cf) {
+        if (e === oldFile) continue;
+        newCache[e] = cf[e];
+      }
+      return newCache;
+    });
   }
 
   // async function createFile(){
@@ -174,14 +196,9 @@ function VideoPlayer() {
 
   function handleData(value?: string) {
     // fileFocused.data = value || ""
-    // fileFocused.isSaved = false
-    let ff = { ...fileFocused, data:value || "" };
+    let ff = { ...fileFocused, data: value || "" };
 
     setCacheFiles((cf) => ({ ...cf, [currentFile]: ff }));
-  }
-  async function onEditorMount() {
-    setBaseDir(await homeDir());
-    initCommands();
   }
 
   function getNamesOfCacheFiles() {
@@ -193,15 +210,25 @@ function VideoPlayer() {
     return cachedFiles;
   }
 
+  function comparePathOrName(cf:{path:string,name:string},_fileFocused: FileData){
+    if(!!fileFocused.path){
+      return fileFocused.path === cf.path
+    }
+    return fileFocused.name === cf.name
+  }
+
   return (
     <div className="container">
       <div className="columns">
         <div className="column is-one-quarter">
           <div className="is-flex-direction-column">
             {filesOfDir.map((f, i) => (
-              <div className="is-clickable" key={i} onClick={async () => await changeFocusFile(f.path)}>
+              <div
+                className="is-clickable"
+                key={i}
+                onClick={async () => await changeFocusFile(f.path)}
+              >
                 {f.name}
-                {fileFocused.isSaved ? "" : " *"}
               </div>
             ))}
           </div>
@@ -209,47 +236,60 @@ function VideoPlayer() {
         <div className="column">
           <div className="is-flex is-flex-direction-row">
             {getNamesOfCacheFiles().map((cf, i) => (
-              <div className="p-1 is-clickable" key={i} onClick={async () => await changeFocusFile(cf.path)}>
+              <div
+                className="p-1 is-clickable"
+                key={i}
+                onClick={async () => await changeFocusFile(cf.path)}
+              >
                 {" "}
-                {cf.name}{" "}
+                {cf.name}
+                {comparePathOrName(cf,fileFocused) ? " *" : ""}
               </div>
             ))}
           </div>
-          <Editor
-            defaultLanguage="plaintext"
-            onMount={onEditorMount}
-            path={fileFocused.name}
-            theme="vs-ligth"
-            width="100%"
-            height="90vh"
-            defaultValue={fileFocused.data}
-            onChange={handleData}
-          />
+          {!!fileFocused && (
+            <MonacoEditor
+              defaultLanguage="plaintext"
+              path={fileFocused.name}
+              theme="vs-ligth"
+              width="100%"
+              height="90vh"
+              defaultValue={fileFocused.data}
+              onChange={handleData}
+            />
+          )}
         </div>
       </div>
       <div className="container is-clearfix">
-        <button className="button m-1" onClick={saveFile}>
-          salvar
-        </button>
-        <button className="button m-1" onClick={saveAsFile}>
-          salvar como
-        </button>
+        {!!fileFocused && (
+          <>
+            <button className="button m-1" onClick={saveFile}>
+              salvar
+            </button>
+            <button className="button m-1" onClick={saveAsFile}>
+              salvar como
+            </button>
+            <button className="button m-1" onClick={closeFile}>
+              cerrar pestaña
+            </button>
+            <button
+              className="button m-1"
+              onClick={() => {
+                setShouldCompile(true);
+              }}
+            >
+              compilar
+            </button>
+          </>
+        )}
         <button className="button m-1" onClick={openDir}>
           abrir directorio
         </button>
-        <button className="button m-1" onClick={()=>{setShouldCompile(true)}}>compilar</button>
-        {shouldCompile && <Compiler fileFocused={fileFocused} shouldCompile={shouldCompile} />}
-        
-        {/* <button
-          className="button m-1"
-          onClick={() =>
-            console.log({ cacheFiles, baseDir, fileFocused, currentFile })
-          }
-        >
-          log
-        </button> */}
+        {shouldCompile && (
+          <Compiler fileFocused={fileFocused} shouldCompile={shouldCompile} refreshDir={refreshDir} />
+        )}
       </div>
     </div>
   );
 }
-export default VideoPlayer;
+export default Editor;

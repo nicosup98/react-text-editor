@@ -26,6 +26,7 @@ function Editor() {
     () => cacheFiles[currentFile],
     [currentFile, cacheFiles]
   );
+  const namesOfCacheFile = useMemo(()=> getNamesOfCacheFiles(cacheFiles),[cacheFiles])
 
   useEffect(()=>{
     homeDir().then(dir=>setBaseDir(dir))
@@ -42,6 +43,10 @@ function Editor() {
     setShouldCompile(false);
   }, [fileFocused]);
 
+
+
+
+//para que funcione bien hay que pasar el estado a rust
   async function initCommands() {
     await unregisterAll();
     const shortCuts: ShorcutCommands = {
@@ -49,7 +54,6 @@ function Editor() {
       "CommandOrControl+o": openFile,
       "CommandOrControl+Shift+O": openDir,
       "CommandOrControl+s": saveFile,
-      "CommandOrControl+w": closeFile,
     };
     registerAll(
       [
@@ -57,7 +61,6 @@ function Editor() {
         "CommandOrControl+o",
         "CommandOrControl+Shift+O",
         "CommandOrControl+s",
-        "CommandOrControl+w",
       ],
       (commands) => {
         shortCuts[commands]();
@@ -81,7 +84,7 @@ function Editor() {
   }
 
   async function saveAsFile() {
-    const path = await save({ defaultPath: baseDir });
+    const path = await save({ defaultPath: baseDir, filters:[{extensions:["txt"],name:"texto plano"}] });
     if (path == null) return;
     await writeTextFile(path, fileFocused.data);
     replaceNewFile(path, fileFocused.data);
@@ -92,7 +95,7 @@ function Editor() {
     if (!fileFocused) return console.log("fileFocused undefine en saveFile");
     const path = !!fileFocused.path
       ? fileFocused.path
-      : await save({ defaultPath: baseDir });
+      : await save({ defaultPath: baseDir,filters:[{extensions:["txt"],name:"texto plano"}] });
 
     if (path == null) return;
 
@@ -154,7 +157,7 @@ function Editor() {
   async function refreshDir() {
     console.log({ baseDir });
     const files = await readDir(baseDir);
-    setFilesOfDir(files);
+    setFilesOfDir(files.filter(f=> !f.children));
   }
 
   async function changeFocusFile(path: string) {
@@ -173,8 +176,14 @@ function Editor() {
   }
 
   function closeFile() {
-    const oldFile = currentFile.slice();
+    const oldFile = (fileFocused.path || fileFocused.name).slice();
     const keys = Object.keys(cacheFiles).filter((k) => k !== oldFile);
+    console.log({keys,oldFile})
+    if (keys.length === 0) {
+      setcurrentFile("")
+      setCacheFiles({})
+      return
+    }
     const randomNum = Math.floor(Math.random() * keys.length);
     console.log(keys[randomNum]);
     setcurrentFile(keys[randomNum]);
@@ -201,9 +210,9 @@ function Editor() {
     setCacheFiles((cf) => ({ ...cf, [currentFile]: ff }));
   }
 
-  function getNamesOfCacheFiles() {
+  function getNamesOfCacheFiles(cacheFiles: MapFile) {
     const cachedFiles = [];
-
+    if (!cacheFiles) return []
     for (const cf in cacheFiles) {
       cachedFiles.push({ path: cf, name: cacheFiles[cf].name });
     }
@@ -211,55 +220,16 @@ function Editor() {
   }
 
   function comparePathOrName(cf:{path:string,name:string},_fileFocused: FileData){
-    if(!!fileFocused.path){
-      return fileFocused.path === cf.path
+    console.log({cf,_fileFocused})
+    if (!_fileFocused) return false
+    if(!!_fileFocused?.path){
+      return _fileFocused.path === cf.path
     }
-    return fileFocused.name === cf.name
+    return _fileFocused.name === cf.name
   }
 
   return (
-    <div className="container">
-      <div className="columns">
-        <div className="column is-one-quarter">
-          <div className="is-flex-direction-column">
-            {filesOfDir.map((f, i) => (
-              <div
-                className="is-clickable"
-                key={i}
-                onClick={async () => await changeFocusFile(f.path)}
-              >
-                {f.name}
-              </div>
-            ))}
-          </div>
-        </div>
-        <div className="column">
-          <div className="is-flex is-flex-direction-row">
-            {getNamesOfCacheFiles().map((cf, i) => (
-              <div
-                className="p-1 is-clickable"
-                key={i}
-                onClick={async () => await changeFocusFile(cf.path)}
-              >
-                {" "}
-                {cf.name}
-                {comparePathOrName(cf,fileFocused) ? " *" : ""}
-              </div>
-            ))}
-          </div>
-          {!!fileFocused && (
-            <MonacoEditor
-              defaultLanguage="plaintext"
-              path={fileFocused.name}
-              theme="vs-ligth"
-              width="100%"
-              height="90vh"
-              defaultValue={fileFocused.data}
-              onChange={handleData}
-            />
-          )}
-        </div>
-      </div>
+    <div className="container is-widescreen">
       <div className="container is-clearfix">
         {!!fileFocused && (
           <>
@@ -286,9 +256,54 @@ function Editor() {
           abrir directorio
         </button>
         {shouldCompile && (
-          <Compiler fileFocused={fileFocused} shouldCompile={shouldCompile} refreshDir={refreshDir} />
+          <div className="border">
+            <Compiler fileFocused={fileFocused} shouldCompile={shouldCompile} refreshDir={refreshDir} />
+            <hr/>
+          </div>
         )}
       </div>
+      <div className="columns">
+        <div className="column is-one-quarter">
+          <div className="is-flex-direction-column">
+            {filesOfDir.map((f, i) => (
+              <div
+                className="is-clickable"
+                key={i}
+                onClick={async () => await changeFocusFile(f.path)}
+              >
+                {f.name}
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="column">
+          <div className="is-flex is-flex-direction-row">
+            {namesOfCacheFile.map((cf, i) => (
+              <div
+                className="p-1 is-clickable"
+                key={i}
+                onClick={async () => await changeFocusFile(cf.path)}
+              >
+                {" "}
+                {cf.name}
+                {fileFocused?.path === cf.path || fileFocused?.name === cf.name ? " *" : ""}
+              </div>
+            ))}
+          </div>
+          {!!fileFocused && (
+            <MonacoEditor
+              defaultLanguage="plaintext"
+              path={fileFocused.name}
+              theme="vs-ligth"
+              width="100%"
+              height="90vh"
+              defaultValue={fileFocused.data}
+              onChange={handleData}
+            />
+          )}
+        </div>
+      </div>
+      
     </div>
   );
 }
